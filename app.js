@@ -26,7 +26,43 @@ function project(lon,lat,b,w,h,x=0,y=0){let cos=Math.cos((b[1]+b[3])/2*Math.PI/1
 function pathOf(polys,b,w,h,x=0,y=0){return polys.map(poly=>poly.filter(ring=>{const xs=ring.map(pt=>b[2]>180&&pt[0]<0?pt[0]+360:pt[0]);return Math.max(...xs)-Math.min(...xs)<=180}).map(ring=>ring.map(([lon,lat],i)=>{const [px,py]=project(lon,lat,b,w,h,x,y);return `${i?'L':'M'}${px.toFixed(1)},${py.toFixed(1)}`}).join('')+'Z').join('')).join('')}
 function mapGroup(items,background,b,w,h,x,y,id){let current=mode==='compass'?queue[index]?.compassFrom:mode==='explore'?selected:(mode==='identify'||mode==='identifyBoth')?queue[index]:null;return `<defs><clipPath id="clip-${id}"><rect x="${x}" y="${y}" width="${w}" height="${h}"/></clipPath></defs><g clip-path="url(#clip-${id})">${background.map(p=>`<path class="land" d="${pathOf(p.polygons,b,w,h,x,y)}"/>`).join('')}${[...items].sort((a,b)=>b.polygons.flat(2).length-a.polygons.flat(2).length).map((p,i)=>{let [cx,cy]=project(...p.point,b,w,h,x,y);const pts=p.polygons.flat(2).map(pt=>project(...pt,b,w,h,x,y)),xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]);const small=(p.region===20&&!['Australia','New Zealand','Papua New Guinea'].includes(p.name))||Math.max(...xs)-Math.min(...xs)<15||Math.max(...ys)-Math.min(...ys)<15;return `<g role="button" tabindex="0" data-place="${p.id}" aria-label="${mode==='explore'||(mode==='build'&&buildPlaced.has(p.id))?esc(p.name):'Map location '+(i+1)}" class="place ${mode==='build'?(buildPlaced.has(p.id)?'build-placed':'build-slot'):''} ${current?.id===p.id?'selected':''}"><path d="${pathOf(p.polygons,b,w,h,x,y)}"/>${mode==='compass'?`<circle cx="${cx}" cy="${cy}" r="4" fill="#173c49" stroke="white" stroke-width="1.5"/>`:''}${small?`<circle cx="${cx}" cy="${cy}" r="8" class="small-place"/>`:''}</g>`}).join('')}</g>`}
 const regionBounds={6:[-172,5,-48,83],8:[-86,8,-57,29],9:[-84,-57,-33,14],10:[-26,30,70,75],14:[24,27,46,44],15:[33,10,65,41],16:[44,-3,137,57],17:[72,-12,122,33],18:[92,-14,148,48],20:[108,-49,215,17],21:[-20,5,41,39],22:[-28,-2,18,20],23:[3,-21,35,14],24:[26,-15,59,20],25:[8,-37,65,-8]};
-function renderMap(){const focus=mode==='build'?queue.find(p=>p.id===buildFocus)||queue[0]:mode==='explore'?selected:queue[index];const showStates=pool.some(p=>p.id.startsWith('us-'))&&(!pool.some(p=>!p.id.startsWith('us-'))||focus?.id.startsWith('us-'));const us=showStates?pool.filter(p=>p.id.startsWith('us-')):[],countries=showStates?[]:pool.filter(p=>!p.id.startsWith('us-'));let content='';if(countries.length){const region=focus?.region||countries[0].region;let b=regionBounds[region]||[-180,-58,180,84];content=mapGroup(countries.filter(p=>p.region===region),WORLD,b,900,535,0,0,'regional')}else{const states=all.filter(p=>p.id.startsWith('us-'));content=mapGroup(us.filter(p=>!['Alaska','Hawaii'].includes(p.name)),states.filter(p=>!['Alaska','Hawaii'].includes(p.name)),[-127,24,-66,50],900,375,0,0,'us');content+=`<rect class="inset" x="15" y="385" width="230" height="140"/><text class="map-label" x="28" y="407">ALASKA · inset</text>`+mapGroup(us.filter(p=>p.name==='Alaska'),states.filter(p=>p.name==='Alaska'),[-180,50,-130,72],205,105,25,415,'ak');content+=`<rect class="inset" x="260" y="385" width="205" height="140"/><text class="map-label" x="275" y="407">HAWAII · inset</text>`+mapGroup(us.filter(p=>p.name==='Hawaii'),states.filter(p=>p.name==='Hawaii'),[-161,18,-154,23],180,100,272,418,'hi');content+=`<text class="ocean-label" x="580" y="450">ATLANTIC OCEAN</text><text class="ocean-label" x="25" y="345">PACIFIC OCEAN</text>`}return `<svg id="map-svg" viewBox="0 0 900 ${mode==='compass'?710:535}" style="width:${zoom*100}%" aria-label="Interactive practice map">${content}${mode==='compass'?compassRose():''}<text x="860" y="28" class="north-label">N ↑</text></svg>`}
+function fittedMapFrame(items,b,w=900,h=535){
+  const points=[];
+  for(const p of items){
+    for(const poly of p.polygons)for(const ring of poly){
+      const xy=ring.map(pt=>project(...pt,b,w,h)),xs=xy.map(pt=>pt[0]),ys=xy.map(pt=>pt[1]);
+      if(Math.max(...xs)<0||Math.min(...xs)>w||Math.max(...ys)<0||Math.min(...ys)>h)continue;
+      for(const [x,y] of xy)points.push([Math.max(0,Math.min(w,x)),Math.max(0,Math.min(h,y))]);
+    }
+    const [x,y]=project(...p.point,b,w,h);if(x>=0&&x<=w&&y>=0&&y<=h)points.push([x-10,y-10],[x+10,y+10]);
+  }
+  if(!points.length)return [0,0,w,h];
+  const xs=points.map(p=>p[0]),ys=points.map(p=>p[1]),left=Math.min(...xs),right=Math.max(...xs),top=Math.min(...ys),bottom=Math.max(...ys);
+  const pad=Math.max(12,Math.max(right-left,bottom-top)*.025);
+  return [left-pad,top-pad,Math.max(60,right-left+pad*2),Math.max(60,bottom-top+pad*2)];
+}
+function renderMap(){
+  const focus=mode==='build'?queue.find(p=>p.id===buildFocus)||queue[0]:mode==='explore'?selected:queue[index];
+  const showStates=pool.some(p=>p.id.startsWith('us-'))&&(!pool.some(p=>!p.id.startsWith('us-'))||focus?.id.startsWith('us-'));
+  const us=showStates?pool.filter(p=>p.id.startsWith('us-')):[],countries=showStates?[]:pool.filter(p=>!p.id.startsWith('us-'));
+  let content='',frame=[0,0,900,500];
+  if(countries.length){
+    const region=focus?.region||countries[0].region,b=regionBounds[region]||[-180,-58,180,84];
+    // Fit the whole lesson region, keeping its frame steady across questions and small sets.
+    frame=fittedMapFrame(sourcePlaces().filter(p=>!p.id.startsWith('us-')&&p.region===region),b);
+    content=mapGroup(countries.filter(p=>p.region===region),WORLD,b,900,535,0,0,'regional');
+  }else{
+    const states=all.filter(p=>p.id.startsWith('us-')),mainland=states.filter(p=>!['Alaska','Hawaii'].includes(p.name));
+    content=mapGroup(us.filter(p=>!['Alaska','Hawaii'].includes(p.name)),mainland,[-125.5,24,-66,50],900,490,0,0,'us');
+    content+=`<rect class="inset" x="60" y="375" width="210" height="115"/><text class="map-label" x="70" y="393">ALASKA · inset</text>`+mapGroup(us.filter(p=>p.name==='Alaska'),states.filter(p=>p.name==='Alaska'),[-180,50,-130,72],190,87,70,398,'ak');
+    content+=`<rect class="inset" x="282" y="398" width="150" height="92"/><text class="map-label" x="292" y="416">HAWAII · inset</text>`+mapGroup(us.filter(p=>p.name==='Hawaii'),states.filter(p=>p.name==='Hawaii'),[-161,18,-154,23],130,65,292,422,'hi');
+  }
+  const [x,y,w,h]=frame;
+  // Keep the compass outside the land without reserving a full-width empty strip.
+  const rose=mode==='compass'?`<svg x="${x+w*.77}" y="${y+h}" width="${w*.23}" height="${w*.23}" viewBox="365 535 170 170">${compassRose()}</svg>`:'';
+  const height=h+(mode==='compass'?w*.23:0);
+  return `<svg id="map-svg" viewBox="${x} ${y} ${w} ${height}" style="width:${zoom*100}%" aria-label="Interactive practice map">${content}${rose}<text x="${x+w-12}" y="${y+23}" text-anchor="end" class="north-label">N ↑</text></svg>`;
+}
 function details(p){return `<p class="eyebrow">${esc(p.kind)}</p><h2>${esc(p.name)}</h2><p class="capital"><small>${p.capitalLabel||'Capital'}</small>${esc(p.capital)}</p>${p.note?`<p class="note">${esc(p.note)}</p>`:''}<div class="fact"><span>✧ A little discovery</span><p>${esc(fact(p))}</p><small>Enjoy this fact. You do not need to memorize it.</small></div>`}
 function renderStudy(){if(mode==='build')return renderBuildStudy();if(mode==='compass'&&!queue.length)return '<h2>Choose a larger set</h2><p>Compass Game needs at least two places on the same map. Choose All places or include earlier classes. Alaska and Hawaii are excluded because their inset positions do not show true directions.</p>';if(mode==='explore')return `<p class="instruction">Tap an outline to discover a place.</p>${details(selected)}<button class="primary" id="practice">Practice this set →</button>`;
 if(roundDone)return `<div class="finish"><span class="finish-star">✦</span><h2>Set complete!</h2><p>${mode==='cards'?queue.length+' cards reviewed.':score+' of '+queue.length+' correct on the first try.'}</p>${missed.length?'<button class="primary" id="retry">Practice missed places</button>':''}<button id="restart">Play again</button><button id="explore">Return to map</button></div>`;
