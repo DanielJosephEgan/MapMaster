@@ -53,3 +53,13 @@ main{max-width:1600px;padding:26px 4%}h1{font-size:clamp(27px,3vw,39px);line-hei
 .waterways.linear.highlighted .feature-shape{fill:none;stroke:#bc8300;stroke-width:5}
 .physical-small-target{fill:#247faa;stroke:white;stroke-width:1.5;vector-effect:non-scaling-stroke;pointer-events:all}
 .highlighted .physical-small-target{fill:#efc34e;stroke:#805800}.physical-toolbar select{max-width:100%}.physical-toolbar label{max-width:100%}
+
+.landforms .feature-shape{fill:#bed397;fill-opacity:.55;stroke:#638048;stroke-width:1}.ocean-target{fill:#d9eff8;stroke:#247faa;stroke-width:2;vector-effect:non-scaling-stroke;pointer-events:all}.highlighted .ocean-target{fill:#efc34e;stroke:#805800}.physical-feature.oceans:focus-visible .ocean-target,.physical-feature.oceans:hover .ocean-target{stroke:#173c49;stroke-width:3}
+
+.physical-number-bg{pointer-events:all}
+
+.waterways.linear.approximate .feature-shape{stroke-dasharray:5 4}
+
+.highlighted .physical-number-bg{fill:#efc34e;stroke:#805800}
+
+.physical-feature.ice .feature-shape{fill:#c5eaf3;stroke:#6193aa;stroke-width:1}.physical-feature.ice.highlighted .feature-shape{fill:#efc34e;stroke:#805800}
